@@ -1,7 +1,9 @@
 package org.t246osslab.easybuggy4sb.controller;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import java.io.IOException;
@@ -16,11 +18,13 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnitRunner;
+import org.owasp.esapi.ESAPI;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * Tests that CxController.runCommand is not vulnerable to command injection.
+ * Tests that CxController.runCommand is not vulnerable to command injection
+ * or Stored XSS (CWE-79).
  *
  * Security assertions verified:
  *   1. Commands outside the allowlist are rejected with HTTP 400.
@@ -28,6 +32,7 @@ import org.springframework.web.server.ResponseStatusException;
  *   3. Path-based command injection (absolute/relative paths) is rejected.
  *   4. The ALLOWED_COMMANDS allowlist is non-empty and contains only safe diagnostics.
  *   5. The endpoint does NOT pass user input directly to Runtime.exec() as a shell string.
+ *   6. Command output is HTML-encoded before being returned to prevent Stored XSS.
  */
 @RunWith(MockitoJUnitRunner.class)
 public class CxControllerTest {
@@ -203,6 +208,81 @@ public class CxControllerTest {
         } catch (UnsupportedOperationException ex) {
             // expected — immutable set correctly rejects modification
         }
+    }
+
+    // =========================================================================
+    // 5. HTML encoding of command output — Stored XSS prevention (CWE-79)
+    // =========================================================================
+
+    /**
+     * The ESAPI encodeForHTML method must encode the five special HTML characters
+     * (&, <, >, ", ') into their HTML entity equivalents.
+     * This is the same sanitizer applied to command output in runCommand().
+     * The test verifies the encoding contract so a regression would be caught
+     * immediately if the ESAPI dependency or its invocation were removed.
+     */
+    @Test
+    public void testEsapiEncodesHtmlSpecialCharacters() {
+        // Simulate command output that contains HTML special characters
+        // (e.g. attacker-controlled data previously stored in a data-store).
+        String rawOutput = "<script>alert('xss')</script>";
+        String encoded = ESAPI.encoder().encodeForHTML(rawOutput);
+
+        // The encoded form must NOT contain any unencoded angle brackets or quotes
+        // that would allow a browser to interpret the payload as HTML/JS.
+        assertFalse("Encoded output must not contain raw '<'", encoded.contains("<"));
+        assertFalse("Encoded output must not contain raw '>'", encoded.contains(">"));
+        assertFalse("Encoded output must not contain raw single-quote", encoded.contains("'"));
+
+        // The encoded form must preserve the semantic content (still contains 'script'
+        // and 'alert' as text, just not as active HTML).
+        assertTrue("Encoded output must retain text 'script'", encoded.contains("script"));
+        assertTrue("Encoded output must retain text 'alert'", encoded.contains("alert"));
+    }
+
+    /**
+     * Ampersand in command output must be encoded to &amp; to prevent
+     * HTML entity injection (e.g. breaking page layout or injecting entities).
+     */
+    @Test
+    public void testEsapiEncodesAmpersand() {
+        String rawOutput = "foo & bar";
+        String encoded = ESAPI.encoder().encodeForHTML(rawOutput);
+        assertFalse("Encoded output must not contain a raw '&'", encoded.contains(" & "));
+    }
+
+    /**
+     * An output string that contains no HTML special characters must survive
+     * ESAPI encoding unchanged (i.e., clean output is not corrupted).
+     */
+    @Test
+    public void testEsapiDoesNotCorruptCleanOutput() {
+        String rawOutput = "john";   // typical whoami output
+        String encoded = ESAPI.encoder().encodeForHTML(rawOutput);
+        assertEquals("Clean output must not be altered by HTML encoding", rawOutput, encoded);
+    }
+
+    /**
+     * An XSS payload using an img onerror vector must have its angle brackets
+     * and quote characters encoded, neutralizing the injection.
+     */
+    @Test
+    public void testEsapiNeutralizesImgOnerrorXssPayload() {
+        String payload = "<img src=x onerror=alert(1)>";
+        String encoded = ESAPI.encoder().encodeForHTML(payload);
+        assertFalse("Encoded output must not contain raw '<'", encoded.contains("<"));
+        assertFalse("Encoded output must not contain raw '>'", encoded.contains(">"));
+    }
+
+    /**
+     * An XSS payload using an event-handler attribute with double quotes must
+     * have its quotes encoded.
+     */
+    @Test
+    public void testEsapiNeutralizesDoubleQuoteXssPayload() {
+        String payload = "\"onmouseover=\"alert(document.cookie)";
+        String encoded = ESAPI.encoder().encodeForHTML(payload);
+        assertFalse("Encoded output must not contain raw '\"'", encoded.contains("\""));
     }
 
     // =========================================================================

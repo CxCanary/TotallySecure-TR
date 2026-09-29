@@ -1,5 +1,6 @@
 package org.t246osslab.easybuggy4sb.controller;
 
+import org.owasp.esapi.ESAPI;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
@@ -64,7 +65,9 @@ public class CxController {
         pb.redirectErrorStream(true);
         byte[] buf = new byte[1024];
         int len = pb.start().getInputStream().read(buf);
-        return new String(buf, 0, len);
+        // HTML-encode the command output before returning it to prevent Stored XSS.
+        // ESAPI.encoder().encodeForHTML() is a SAST-recognized sanitizer (CWE-79).
+        return ESAPI.encoder().encodeForHTML(new String(buf, 0, len));
     }
 
     @GetMapping("legacy/add")
