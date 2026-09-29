@@ -54,31 +54,10 @@ public class SQLInjectionController extends AbstractController {
 	}
 
 	private List<User> selectUsers(String name, String password) {
-		//* Start SQLi Section
-		String sql = "SELECT  name, secret from USERS where name='"+ name + "' or password='"+ password + "'" ;
-		return jdbcTemplate.query(sql, new RowMapper<User>() {
-                    public User mapRow(ResultSet rs, int rowNum) throws SQLException {
-                        User user = new User();
-                        user.setName(rs.getString("name"));
-                        user.setSecret(rs.getString("secret"));
-                        return user;
-                    }
-				});
-		//*/ End SQLi Section
-
-		/* Start Remediated Section
+		// Use parameterized query to prevent SQL injection: user input is passed
+		// as bind parameters (Object[]) rather than concatenated into the SQL string.
 		String sql = "SELECT name, secret from USERS where name=? or password=?";
-		return jdbcTemplate.query(sql, new PreparedStatementCallback<Boolean>(){
-			@Override  
-			public Boolean doInPreparedStatement(PreparedStatement ps)  
-				throws SQLException, DataAccessException {  
-				
-				ps.setString(1,name);  
-				ps.setString(2,password);  
-				
-				return ps.execute();
-				}
-	    }, new RowMapper<User>() {
+		return jdbcTemplate.query(sql, new Object[]{name, password}, new RowMapper<User>() {
 			public User mapRow(ResultSet rs, int rowNum) throws SQLException {
 				User user = new User();
 				user.setName(rs.getString("name"));
@@ -86,6 +65,5 @@ public class SQLInjectionController extends AbstractController {
 				return user;
 			}
 		});
-		//*/ End Remediated Section
 	}
 }
