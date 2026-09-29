@@ -22,6 +22,18 @@ import ognl.OgnlException;
 @Controller
 public class OGNLExpressionInjectionController extends AbstractController {
 
+    /**
+     * Allowlist of permitted characters for a safe arithmetic expression.
+     * Only digits, basic arithmetic operators (+, -, *, /, %), parentheses,
+     * decimal points, and whitespace are allowed.  Any expression containing
+     * letters, @-signs, quotes, brackets, or other characters that would allow
+     * OGNL constructs (class references, method calls, static access, etc.) is
+     * rejected before reaching the OGNL engine, breaking the taint flow
+     * described in CWE-917.
+     */
+    static final java.util.regex.Pattern SAFE_MATH_EXPRESSION =
+            java.util.regex.Pattern.compile("^[0-9+\\-*/%().\\s]+$");
+
     @RequestMapping(value = Config.APP_ROOT + "/ognleijc")
     public ModelAndView process(@RequestParam(value = "expression", required = false) String expression,
             ModelAndView mav, Locale locale) {
@@ -35,8 +47,18 @@ public class OGNLExpressionInjectionController extends AbstractController {
             }
         }));
         if (!StringUtils.isBlank(expression)) {
+            // Security fix (CWE-917): only pass the expression to OGNL when it matches
+            // the strict arithmetic allowlist.  Expressions that contain letters, class
+            // references (@…@), method calls, or any other non-arithmetic characters are
+            // rejected here — the tainted string never reaches Ognl.parseExpression().
+            if (!SAFE_MATH_EXPRESSION.matcher(expression).matches()) {
+                mav.addObject("expression", expression);
+                mav.addObject("errmsg",
+                        msg.getMessage("msg.invalid.expression", new String[] { errMessage }, null, locale));
+                return mav;
+            }
             try {
-                Object expr = Ognl.parseExpression(expression.replaceAll("Math\\.", "@Math@"));
+                Object expr = Ognl.parseExpression(expression);
                 value = Ognl.getValue(expr, ctx);
             } catch (OgnlException e) {
                 if (e.getReason() != null) {
