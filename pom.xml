@@ -159,6 +159,15 @@
 			<version>2.3.0.0</version>
 		</dependency>
 
+		<!-- Explicitly override transitive commons-collections to remediate CVE-2015-7501
+		     (unsafe Java deserialization via crafted serialized objects). Versions 3.0–3.2.1
+		     and 4.0 are vulnerable; 3.2.2+ contains the fix. -->
+		<dependency>
+			<groupId>commons-collections</groupId>
+			<artifactId>commons-collections</artifactId>
+			<version>3.2.2</version>
+		</dependency>
+
 		<dependency>
 			<groupId>com.sun.mail</groupId>
 			<artifactId>javax.mail</artifactId>
