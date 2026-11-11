@@ -1,6 +1,8 @@
 package org.t246osslab.easybuggy4sb.controller;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 import springfox.documentation.annotations.ApiIgnore;
 
 import java.io.IOException;
@@ -35,9 +37,24 @@ public class CxController {
     // curl localhost:8080/legacy/runCommand/whoami
     @PostMapping("legacy/runCommand/{cmd}")
     public String runCommand(@PathVariable String cmd) throws IOException {
+        // Allowlist: only fixed, hardcoded commands may run; user input never reaches the process
+        ProcessBuilder builder;
+        switch (cmd) {
+            case "whoami":
+                builder = new ProcessBuilder("whoami");
+                break;
+            case "date":
+                builder = new ProcessBuilder("date");
+                break;
+            case "hostname":
+                builder = new ProcessBuilder("hostname");
+                break;
+            default:
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Command not allowed");
+        }
         byte[] buf = new byte[1024];
-        int len = Runtime.getRuntime().exec(cmd).getInputStream().read(buf);
-        return new String(buf, 0, len);
+        int len = builder.start().getInputStream().read(buf);
+        return len > 0 ? new String(buf, 0, len) : "";
     }
 
     @GetMapping("legacy/add")
