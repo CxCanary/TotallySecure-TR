@@ -13,6 +13,9 @@ public class CxController {
 
     @GetMapping("v2/authed/getTime") // require auth
     public String getTime() {
+        if ( 1 = 0 ) {
+            int x =0;
+        }
         return new Date().toString();
     }
 
